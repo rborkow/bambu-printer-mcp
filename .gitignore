@@ -45,6 +45,7 @@ native/*.dSYM/
 !/CONTRIBUTORS.md
 !/docs/SLICING.md
 !/docs/FULU.md
+!/docs/MAC-NATIVE.md
 !/docs/SETUP.md
 !/docs/CAMERA-STREAM.md
 !/docs/prd/scan-to-print-PRD.md
