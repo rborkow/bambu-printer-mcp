@@ -1,26 +1,24 @@
 # bambu-printer-mcp
 
-This file is the repository's shared source of truth for local agents, GitHub Codex review, and scheduled maintenance. Read it before changing or reviewing code. CLAUDE.md and .claude/agents.md defer to these rules.
+This file is the repository's shared source of truth for local agents. Read it before changing or reviewing code. CLAUDE.md and .claude/agents.md defer to these rules.
 
-## Release and review
+## Fork and review
 
-- Every update to main requires an npm patch version bump and publication, including code, documentation, and configuration. Run `npm version patch` once for the release, and include its package.json, package-lock.json, and manifest.json changes in the same integration to main.
-- Before opening or updating a PR, run Matt Pocock's `code-review` skill against the main merge base. Resolve substantive standards and spec findings locally; keep its issue-tracker note as ignored agent scratch rather than adding another required public template.
-- Run the local `code-review` gate before pushing PR updates so problems are caught before spending on GitHub Actions. Use a PR to main, include `@codex review` in change commit messages, and request `@codex review` on the PR. After each update, wait at least five minutes and for Codex review plus CI to complete on the current head. Inspect inline findings as well as summary comments, fix actionable findings, and repeat. Local review supplements GitHub review and CI; it does not disable or replace either. A stale review or passing local test does not authorize ignoring current CI failures.
-- Prioritize substantive defects and regressions in supported workflows. Document and defer obscure edge cases, speculative hardening, and cosmetic objections instead of extending a sound release into an endless review loop.
-- Never add AI or agent attribution anywhere in Git or GitHub: no `Co-Authored-By` trailers for Claude, Codex, or other assistants, no "Generated with" footers, and no agent session links in commits, PR titles or bodies, review replies, issue comments, or release notes.
-- Preserve original authorship when integrating contributor PRs. Credit code, issue reports, hardware evidence, and useful superseded proposals in CONTRIBUTORS.md. Clearly distinguish merged changes, superseded proposals, and deferred work.
-- The main-branch Publish Package workflow runs the checks and `npm publish` using trusted publishing. Verify that workflow and the exact npm version before claiming publication; do not publish an unmerged release ahead of review.
-- Create a `v<version>` tag on the final merged release commit and a GitHub Release. The tag workflow builds and uploads the `.mcpb` extension. Verify npm, package/manifest versions, the release asset, and fresh installed startup before declaring the release complete. Never move a published tag.
-- After merging and verifying the release, switch back to main and delete the merged temporary integration branch locally and from origin.
-- Changes to src/, scripts/, or printer behavior need a present-tense CHANGELOG.md entry under `## Unreleased` while preparing the release. Run `npm version patch` only after accumulating the release notes: its version hook promotes that heading to the new version and date. If review adds notes after the bump, place them in that release's section. Released changes must never remain under `Unreleased` on main. Use that version's entries in GitHub release notes, with contributor credit and validation limits. Supply multiline notes via a body file.
-- Verify the Pages deployment on the merged release commit and read the live `/project/changelog` page before declaring a release complete. Confirm the latest version/date and changes appear under their released version, not `Unreleased`; a passing site build alone is insufficient.
+This is rborkow's personal fork of DMontgomery40/bambu-printer-mcp (GPL-2.0), aimed at a first-class macOS setup. Upstream's release machinery (npm publication on every main change, `@codex review`, GitHub Pages and MCPB release verification) does not apply here.
+
+- Work on a topic branch and merge to `main` once `npm run build` and the relevant tests pass. Push to `origin` (the fork). Never push to `upstream`.
+- Pull upstream releases with `git fetch upstream && git merge upstream/main`; keep fork changes small and well-separated so those merges stay easy. Upstream contributions are optional and go through a normal upstream PR.
+- The fork is run from this checkout (`node dist/index.js`, launched by `~/.config/bambu-printer-mcp/launch.sh`), not from npm. After merging, run `npm run build` (and `npm run build:native` when native sources change); the next MCP start picks it up.
+- Changes to src/, scripts/, or printer behavior get a present-tense CHANGELOG.md entry under `## Unreleased`. Bump the version only when cutting a tagged fork release.
+- Prioritize substantive defects and regressions in supported workflows. Document and defer obscure edge cases and cosmetic objections.
+- Never add AI or agent attribution in Git or GitHub: no `Co-Authored-By` trailers for assistants, no "Generated with" footers, no agent session links.
+- Preserve original authorship when integrating others' work, and credit it in CONTRIBUTORS.md.
 
 ## Build and test
 
 - `npm run build` must finish with zero TypeScript errors before committing. Keep tracked dist/ output synchronized with source.
 - `node --test tests/behavior.test.mjs` must pass all current tests before pushing. Do not rely on an old fixed test count.
-- `npm test` builds and runs the full suite, including printer routing/status, slicer safety, Blender MCP, real npm installation layouts, and desktop packaging. It must pass before release; CI uses Node.js 24 on Linux.
+- `npm test` builds and runs the full suite, including printer routing/status, slicer safety, Blender MCP, real npm installation layouts, and desktop packaging. Run it before merging changes that touch printing, slicing, installation or safety. CAD tests need `CAD_PYTHON` pointing at the pinned CAD runtime (`~/Library/Application Support/bambu-printer-mcp/cad/runtime/bin/python`), or they skip.
 - Tests use compiled dist/ files, so build before focused test commands. Optional tests against an installed BambuStudio profile tree may skip when that tree or model is unavailable; report those skips separately from failures.
 - For installation changes, test the actual tarball in local-hoisted, global, and npm-exec layouts and check the patched dependency at runtime. For desktop changes, inspect and initialize the extracted MCPB archive.
 - Do not start physical prints or mutate the user's live Blender scene during routine tests. Use dummy printer credentials, mocked transport boundaries, and isolated headless Blender. Set BAMBU_MODEL explicitly to an empty string in tests of missing-model behavior so dotenv cannot supply a real configuration.
@@ -35,7 +33,6 @@ This file is the repository's shared source of truth for local agents, GitHub Co
 - Patches depend on pinned patch-package internals; changes require fresh-install regressions. Do not silently change unknown printer identities or throw from normal asynchronous status reports.
 - Package only intended runtime, source, licenses, and contributor files. Build MCPB in isolated staging without pruning the developer checkout. Never package credentials, local configuration, or private models.
 - Use a private OS temporary directory per server instance and distinct generated profile paths for differing content.
-- When printer models, MCP tool schemas, status or the `counterpart/1` contract change, audit Scan to Make’s four clients (Mac, iPhone/iPad, Android and Linux) and update each affected client in its own repository. Keep printer and slicer behavior in the MCP; the apps render the contract and pass user choices through.
 
 ## Printer and slicer safety
 
@@ -86,4 +83,3 @@ This file is the repository's shared source of truth for local agents, GitHub Co
 
 - `.gitignore` excludes agent scratch plans, progress logs, handoff notes, and draft comments with `*.md`, while explicitly allowing shared AGENTS/CLAUDE rules and public README, CHANGELOG, CONTRIBUTORS, and docs/SLICING documentation. Keep public docs and rules tracked and current; leave private agent notes local. Add an explicit exception for intentional new public documentation.
 - Keep real credentials and private artifacts out of Git. Do not print secrets from .env or local configuration.
-- The GitHub Pages site in site/ is generated from README.md, docs/, CHANGELOG.md, and CONTRIBUTORS.md; edit those sources, not generated output. Map new or renamed README sections in site/scripts/pages.mjs, keep the home page's model notes in site/scripts/sync-docs.mjs aligned with supported printing, and check documentation changes with `npm --prefix site ci && npm --prefix site run build`.
