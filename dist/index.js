@@ -2530,11 +2530,12 @@ class BambuPrinterMCPServer {
                     ...CAMERA_STREAM_TOOLS,
                     {
                         name: "camera_snapshot",
-                        description: "Capture a single JPEG frame from the printer's chamber camera. A1/P1 use TCP-on-6000; X1/P2S/H2/X2D use RTSP via ffmpeg. Returns JPEG as base64; pass save_path to also write the bytes to disk.",
+                        description: "Capture a single JPEG frame from the printer's chamber camera. A1/P1 use TCP-on-6000; X1/P2S/H2/X2D use RTSP via ffmpeg. Returns the JPEG as base64, or with save_path writes it to disk and returns the path instead (the base64 of a frame overflows most clients' tool-result limits).",
                         inputSchema: {
                             type: "object",
                             properties: {
-                                save_path: { type: "string", description: "Optional absolute path to write the JPEG to disk. If omitted, only the base64 payload is returned." },
+                                save_path: { type: "string", description: "Optional absolute path to write the JPEG to disk. The result then carries savedTo and no base64 unless include_base64 is true. If omitted, the base64 payload is returned." },
+                                include_base64: { type: "boolean", description: "Also return the base64 payload when save_path is given (default false). Without save_path the base64 is always returned." },
                                 timeout_ms: { type: "number", description: "Max ms to wait for a live frame (default 8000). A1/P1 cameras first replay a buffered frame, which is skipped, so a live frame takes about 3 s, longer on cold start." },
                                 bambu_model: { type: "string", description: "Printer model. Used to route to the correct protocol or fail fast on unsupported models. Defaults to BAMBU_MODEL." },
                                 experimental: { type: "boolean", description: "Deprecated and ignored. Earlier this flag let callers probe H2 series via the A1/P1 TCP-on-6000 path; live testing on an H2S confirmed H2 uses RTSP instead, so the flag has no effect now." },
@@ -3604,6 +3605,7 @@ class BambuPrinterMCPServer {
                         const snapshotModel = args?.bambu_model ?? process.env.BAMBU_MODEL ?? process.env.BAMBU_PRINTER_MODEL;
                         result = await this.bambu.cameraSnapshot(host, bambuSerial, bambuToken, {
                             savePath: args?.save_path ? String(args.save_path) : undefined,
+                            includeBase64: args?.save_path ? args?.include_base64 === true : true,
                             timeoutMs: args?.timeout_ms !== undefined ? Number(args.timeout_ms) : undefined,
                             bambuModel: snapshotModel ? String(snapshotModel) : undefined,
                             experimental: Boolean(args?.experimental),

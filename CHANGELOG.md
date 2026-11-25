@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- `camera_snapshot` with `save_path` returns the saved path without the frame's base64, which overflowed MCP clients' tool-result limits; pass `include_base64: true` to get both.
+
 ### Fixed
 - Mesh-mode `cad_run` results that fail their checks now say why in `problems`: zero-volume sheets left at boolean seams, inside-out pieces and open pieces, each with where it is and how to fix it. Before, `valid: false` arrived with an empty problems list.
 

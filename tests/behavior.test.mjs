@@ -2370,6 +2370,20 @@ test("camera_snapshot save_path writes the jpeg to disk", async (t) => {
   assert.equal(out.savedTo, outPath);
   const onDisk = fs.readFileSync(outPath);
   assert.deepEqual(Buffer.from(onDisk), fakeJpeg);
+  // A saved frame is read from disk: its base64 would overflow MCP clients' tool-result limits.
+  assert.equal(out.base64, undefined);
+  assert.equal(out.sizeBytes, fakeJpeg.length);
+
+  const both = await bambu.cameraSnapshot("127.0.0.1", "S", "T", {
+    bambuModel: "p1s",
+    savePath: outPath,
+    includeBase64: true,
+  });
+  assert.equal(both.base64, fakeJpeg.toString("base64"));
+
+  const inline = await bambu.cameraSnapshot("127.0.0.1", "S", "T", { bambuModel: "p1s" });
+  assert.equal(inline.base64, fakeJpeg.toString("base64"));
+  assert.equal(inline.savedTo, undefined);
 });
 
 test("delete_printer_file requires confirm:true and skips FTP when omitted", async () => {

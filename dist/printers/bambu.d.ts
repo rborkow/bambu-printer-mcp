@@ -287,6 +287,11 @@ export declare class BambuImplementation {
     };
     cameraSnapshot(host: string, _serial: string, token: string, options?: {
         savePath?: string;
+        /**
+         * Return the JPEG as base64 too. Defaults to true without savePath and false with it: a saved frame is read
+         * from disk, and its base64 (tens of KB) overflows most MCP clients' tool-result limits.
+         */
+        includeBase64?: boolean;
         capturedAfter?: string;
         timeoutMs?: number;
         bambuModel?: string;
@@ -307,7 +312,7 @@ export declare class BambuImplementation {
         status: string;
         format: string;
         sizeBytes: number;
-        base64: string;
+        base64?: string;
         savedTo?: string;
         capturedAt?: string;
         width?: number;

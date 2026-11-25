@@ -2086,16 +2086,21 @@ export class BambuImplementation {
     cameraStreamStop(host, serial) { this.cameraStreams.stop(JSON.stringify([host, serial])); return { status: "stopped" }; }
     async cameraSnapshot(host, _serial, token, options = {}) {
         const timeoutMs = options.timeoutMs ?? 8000;
+        const includeBase64 = options.includeBase64 ?? !options.savePath;
+        const finish = async (jpeg, extra) => {
+            if (options.savePath)
+                await (await import("node:fs/promises")).writeFile(options.savePath, jpeg);
+            return { status: "success", format: "image/jpeg", sizeBytes: jpeg.length, ...extra,
+                ...(includeBase64 ? { base64: jpeg.toString("base64") } : {}),
+                ...(options.savePath ? { savedTo: options.savePath } : {}) };
+        };
         const stream = this.cameraStreams.get(JSON.stringify([host, _serial]));
         if (stream && !stream.stopped) {
             const frame = await snapshotFrame(stream, timeoutMs, options.capturedAfter);
             if (frame.status !== "frame" || !frame.base64)
                 throw new Error("The active camera stream has not produced a live frame");
             const jpeg = Buffer.from(frame.base64, "base64");
-            if (options.savePath)
-                await (await import("node:fs/promises")).writeFile(options.savePath, jpeg);
-            return { status: "success", format: "image/jpeg", sizeBytes: jpeg.length, base64: jpeg.toString("base64"), transport: stream.transport, capturedAt: frame.capturedAt,
-                ...(options.savePath ? { savedTo: options.savePath } : {}) };
+            return finish(jpeg, { transport: stream.transport, capturedAt: frame.capturedAt });
         }
         const model = (options.bambuModel ?? "").toLowerCase();
         const RTSP_MODELS = RTSP_CAMERA_MODELS;
@@ -2104,37 +2109,13 @@ export class BambuImplementation {
         }
         if (RTSP_MODELS.has(model)) {
             const jpeg = await this.fetchRtspCameraFrame(host, token, timeoutMs, options.ffmpegPath);
-            const result = {
-                status: "success",
-                format: "image/jpeg",
-                sizeBytes: jpeg.length,
-                base64: jpeg.toString("base64"),
-                transport: "rtsps-322",
-            };
-            if (options.savePath) {
-                const fsSync = await import("node:fs");
-                fsSync.writeFileSync(options.savePath, jpeg);
-                result.savedTo = options.savePath;
-            }
-            return result;
+            return finish(jpeg, { transport: "rtsps-322" });
         }
         if (model && !TCP_CAMERA_MODELS.has(model)) {
             throw new Error(`camera_snapshot: model "${model}" is not a known Bambu Lab printer model. Supported: ${[...TCP_CAMERA_MODELS, ...RTSP_MODELS].sort().join(", ")}`);
         }
         const jpeg = await this.fetchTcpCameraFrame(host, token, timeoutMs);
-        const result = {
-            status: "success",
-            format: "image/jpeg",
-            sizeBytes: jpeg.length,
-            base64: jpeg.toString("base64"),
-            transport: "tcp-6000",
-        };
-        if (options.savePath) {
-            const fsSync = await import("node:fs");
-            fsSync.writeFileSync(options.savePath, jpeg);
-            result.savedTo = options.savePath;
-        }
-        return result;
+        return finish(jpeg, { transport: "tcp-6000" });
     }
     /**
      * Pull a single JPEG frame from the printer's RTSP/RTSPS stream using
