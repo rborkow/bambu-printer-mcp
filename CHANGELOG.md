@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Mesh-mode `cad_run` results that fail their checks now say why in `problems`: zero-volume sheets left at boolean seams, inside-out pieces and open pieces, each with where it is and how to fix it. Before, `valid: false` arrived with an empty problems list.
+
 ## [1.1.103] – 2026-11-24
 
 ### Added

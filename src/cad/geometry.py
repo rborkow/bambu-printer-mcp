@@ -53,6 +53,8 @@ def inspect(request):
         except Exception as e:
             purpose['not_checked'].append(f'the view of the design in use could not be drawn: {type(e).__name__}')
     found = evidence(assembly)
+    if step is None:
+        found['problems'] = found['problems'] + mesh_problems(m)
     if purpose is not None:
         found['checked'].append('what PURPOSE says it is for, compiled into requirements and evaluated on use(): the held objects, the mounts, the loads at each mount and whether it faces its user (purpose; anything not passing is in purpose.blocked)')
         found['not_checked'] += purpose['not_checked']
@@ -267,6 +269,44 @@ def bodies(step, request, budget_s=20.0):
             'fused': fused, 'too_close': under, 'unconfirmed': unsure, 'closest': closest,
             'above_bed': above, 'below_bed': below, 'severed': severed, 'problems': problems,
             'seconds': round(time.monotonic() - started, 3)}
+
+
+def mesh_problems(m, limit=4):
+    """Why a mesh-mode export fails its checks, piece by piece, so valid: false never arrives with nothing to say.
+
+    The commonest cause is not a bad model but its seams: a boolean union (or hulls sharing a face) can leave flat,
+    closed sheets that enclose no volume. They only become separate pieces once coincident vertices are merged, as
+    every reader of the STL (this check, the slicer) does, so the script's own mesh can look watertight."""
+    pieces = m.split(only_watertight=False)
+    flat, inverted, open_ = [], [], []
+    for p in pieces:
+        if not p.is_watertight:
+            open_.append(p)
+        elif abs(p.volume) <= 1e-6 * max(p.area, 1.0) ** 1.5:
+            flat.append(p)
+        elif p.volume < 0:
+            inverted.append(p)
+
+    def where(group):
+        boxes = sorted(group, key=lambda p: -p.area)[:limit]
+        shown = '; '.join('x {:.1f}..{:.1f}, y {:.1f}..{:.1f}, z {:.1f}..{:.1f}'.format(*np.round(p.bounds.T.ravel(), 1))
+                          for p in boxes)
+        more = f' (and {len(group) - limit} more)' if len(group) > limit else ''
+        return shown + more
+
+    problems = []
+    if flat:
+        problems.append(f'{len(flat)} of {len(pieces)} mesh pieces enclose no volume: flat sheets left where shapes were '
+                        f'joined, at {where(flat)}. Drop them before returning: m.merge_vertices(), then keep the '
+                        f'largest piece, max(m.split(only_watertight=False), key=lambda c: abs(c.volume)); or build '
+                        f'adjoining sections as one closed mesh instead of unioning pieces that share a face.')
+    if inverted:
+        problems.append(f'{len(inverted)} mesh piece(s) are inside out (negative volume) at {where(inverted)}: '
+                        f'call fix_normals() on them, or check the face winding of a hand-built mesh.')
+    if open_:
+        problems.append(f'{len(open_)} mesh piece(s) are open (not watertight) at {where(open_)}: close the holes, '
+                        f'or rebuild that piece as a closed solid (a convex hull, an extrusion or a manifold3d result).')
+    return problems
 
 
 def evidence(assembly):
