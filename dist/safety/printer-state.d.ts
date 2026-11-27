@@ -42,8 +42,10 @@ export interface ValidatedPrinterState {
 }
 export declare function finiteNumber(value: unknown): number | undefined;
 /** Models observed retaining FAILED with fail_reason 0300400C after a canceled job:
- * X2D, and H2C (a fresh report after a Stop: FAILED, print_error 0, fail_reason
- * "50348044", the stopped job's name and file). Add a model only with that hardware evidence. */
+ * X2D, H2C (a fresh report after a Stop: FAILED, print_error 0, fail_reason
+ * "50348044", the stopped job's name and file), and X1C (firmware 01.12.01.00, 2026-11-27:
+ * the same fresh report after a stopped job, no HMS, while Bambu Studio sends a new job
+ * without complaint). Add a model only with that hardware evidence. */
 export declare const CANCELLED_JOB_MODELS: ReadonlySet<string>;
 /**
  * X2D and H2C retain FAILED after a canceled job even with no active print error.

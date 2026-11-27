@@ -45,6 +45,19 @@ test('the exact clean H2C cancellation qualifies as terminal', () => {
   ]) assert.throws(() => validatePrinterState(h2c(overrides), required), JSON.stringify(overrides));
 });
 
+// X1C (serial prefix 00M) firmware 01.12.01.00 after a stopped job: gcode_state FAILED,
+// print_error 0, fail_reason "50348044" (0300400C), the stopped job's name and file, no HMS.
+test('the exact clean X1C cancellation qualifies as terminal', () => {
+  const x1c = overrides => ({ ...fresh(canceled({ model: 'x1c', nozzle_diameter: '0.4',
+    vt_tray: { id: '254', tray_type: 'PETG' }, vir_slot: undefined, ...overrides })), serial: '00MCANCELTEST' });
+  const required = { ...requirements, model: 'x1c', nozzleDiameters: [0.4], amsMapping: [254], filamentNozzleIndices: undefined };
+  assert.doesNotThrow(() => validatePrinterState(x1c(), required));
+  for (const overrides of [
+    { fail_reason: undefined }, { fail_reason: 0 }, { fail_reason: 0x0300400d }, { print_error: 123 },
+    { subtask_name: '', gcode_file: '' }, { gcode_state: 'RUNNING' }, { hms: [{ attr: 1, code: 0x20001 }] },
+  ]) assert.throws(() => validatePrinterState(x1c(overrides), required), JSON.stringify(overrides));
+});
+
 test('the same canceled report from a matching non-X2D printer stays blocked', () => {
   for (const [model, prefix, nozzles] of [['h2d', '094', ['0.4', '0.4']], ['h2dpro', '239', ['0.4', '0.4']], ['p1s', '01P', ['0.4']]]) {
     const status = { ...fresh(canceled({ model, nozzle_diameter: nozzles })), serial: `${prefix}CANCELTEST` };

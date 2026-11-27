@@ -10,6 +10,7 @@
 - Track native control sequence replies and printer refusals, wait for certificates, and isolate control configuration from Studio. Retry Stop once only after a proven pre-dispatch connection timeout.
 
 ### Changed
+- An X1C whose last job was stopped (FAILED, print_error 0, fail_reason 0300400C "The task was canceled", the stopped job named, no HMS) counts as finished for the next print, as on X2D and H2C and as Bambu Studio treats it. Other failures still refuse.
 - `camera_snapshot` with `save_path` returns the saved path without the frame's base64, which overflowed MCP clients' tool-result limits; pass `include_base64: true` to get both.
 
 ### Fixed
