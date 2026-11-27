@@ -7,12 +7,13 @@ export const SOLIDCRAFT_DEFAULT_CLI = "/Applications/SolidCraft.app/Contents/Mac
 export const SOLIDCRAFT_TOOLS = [
     { name: "solidcraft_status", description: "Check the configured local SolidCraft CLI installation and version; does not connect to or edit the desktop design.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-    { name: "solidcraft_export", description: "Export a saved .sc design headlessly, leaving the desktop session untouched. Prefer 3MF; groups 3MF bodies as one object with parts so auto-arrange preserves their relative positions. Returns measured bodies, bounds, volume and optional preview. Never prints or overwrites. Configure SOLIDCRAFT_CLI in the server environment.",
+    { name: "solidcraft_export", description: "Export a saved .sc design headlessly, leaving the desktop session untouched. Prefer 3MF; by default groups 3MF bodies as one object with parts so auto-arrange preserves their relative positions (objects: separate keeps each body its own object). Returns measured bodies, bounds, volume and optional preview. Never prints or overwrites. Configure SOLIDCRAFT_CLI in the server environment.",
         inputSchema: { type: "object", properties: {
                 design_path: { type: "string", description: "Existing saved .sc file." },
                 parameters: { type: "object", additionalProperties: { type: "string" }, description: "Existing parameter names to length expressions; no shell interpretation." },
                 format: { type: "string", enum: ["3mf", "stl"], default: "3mf", description: "Export format; 3MF retains named parts." },
                 quality: { type: "string", enum: ["standard", "fine", "finest"], default: "standard", description: "Tessellation quality." },
+                objects: { type: "string", enum: ["assembly", "separate"], default: "assembly", description: "3MF only. assembly: every body becomes a part of one object, so bodies that touch (a boss on a base) stay where they were designed. separate: each body is its own object that the slicer drops onto the bed and arranges on its own; use it for parts modelled in assembled position (a lid above its box) that print side by side." },
                 preserve_plate: { type: "boolean", default: false, description: "Return arrange:false to retain absolute plate coordinates. Default arranges the grouped assembly as a whole." },
                 preview: { type: "boolean", default: false, description: "Render an isometric PNG from the evaluated design." },
                 output_dir: { type: "string", description: "Existing TEMP_DIR or trusted CAD_OUTPUT_DIRS directory; defaults to server temporary directory." },
@@ -77,7 +78,7 @@ export class SolidcraftEngine {
         }
     }
     async export(args, signal) {
-        const allowed = new Set(["design_path", "parameters", "format", "quality", "preserve_plate", "preview", "output_dir", "timeout_ms", "executable"]);
+        const allowed = new Set(["design_path", "parameters", "format", "objects", "quality", "preserve_plate", "preview", "output_dir", "timeout_ms", "executable"]);
         for (const key of Object.keys(args))
             if (!allowed.has(key))
                 throw new Error("Unknown solidcraft_export argument: " + key);
@@ -95,6 +96,13 @@ export class SolidcraftEngine {
         for (const key of ["preview", "preserve_plate"])
             if (args[key] !== undefined && typeof args[key] !== "boolean")
                 throw new Error(key + " must be boolean.");
+        const objects = args.objects ?? "assembly";
+        if (!["assembly", "separate"].includes(String(objects)))
+            throw new Error("objects must be assembly or separate.");
+        if (format === "stl" && args.objects !== undefined)
+            throw new Error("objects applies to 3MF only.");
+        if (objects === "separate" && args.preserve_plate === true)
+            throw new Error("objects: separate lets the slicer place each body; it cannot be combined with preserve_plate.");
         if (format === "stl" && args.preserve_plate === true)
             throw new Error("preserve_plate requires 3MF; STL has no plate layout.");
         const timeout = args.timeout_ms ?? 120000;
@@ -130,7 +138,7 @@ export class SolidcraftEngine {
         await run(["run", "--in", input, ...paramArgs, "--out", output, "--save", saved, "--quality", String(quality), "--quiet"]);
         if (!(await fs.stat(output)).isFile() || !(await fs.stat(output)).size)
             throw new Error("SolidCraft did not write a nonempty export.");
-        if (format === "3mf") {
+        if (format === "3mf" && objects === "assembly") {
             // Group every placed build item, including root-level bodies. Component-mode
             // export alone only groups bodies already in the same placed CAD component.
             const zip = await JSZip.loadAsync(await fs.readFile(output));
@@ -178,6 +186,7 @@ export class SolidcraftEngine {
         }
         return { path: output, design_path: design, evaluated_design_path: saved, bodies, bbox, volume_mm3: measurement.total.volume_mm3,
             ...(preview_path ? { preview_path } : {}), next: { tool: "slice_stl", arguments: { stl_path: output, arrange: args.preserve_plate !== true },
-                guidance: "Supply bambu_model and the desired process/material settings. 3MF parts are grouped and arrange as one assembly. Use preserve_plate:true only for a design already positioned on the plate; slice and inspect before printing. Export alone does not verify printability." } };
+                objects: format === "3mf" ? objects : undefined,
+                guidance: "Supply bambu_model and the desired process/material settings. " + (objects === "separate" ? "Each body is its own object; the slicer drops each onto the bed and arranges it." : "3MF parts are grouped and arrange as one assembly.") + " Use preserve_plate:true only for a design already positioned on the plate; slice and inspect before printing. Export alone does not verify printability." } };
     }
 }

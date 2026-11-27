@@ -143,3 +143,17 @@ test('real CLI exports two root bodies with original relative coordinates', {tim
   assert.equal(plate.next.arguments.arrange,false);
   assert.ok((await fs.stat(result.preview_path)).size>100);
 });
+
+test('objects: separate keeps each body its own 3MF object and refuses conflicting options', async t => {
+  const {design, engine} = await fixture(t);
+  const result = await engine.export({design_path:design, objects:'separate'});
+  const model = await parseStringPromise(await (await JSZip.loadAsync(await fs.readFile(result.path))).file('3D/3dmodel.model').async('string'));
+  assert.equal(model.model.build[0].item.length, 1);
+  assert.equal(model.model.build[0].item[0].$.objectid, '1', 'build items are left as SolidCraft wrote them');
+  assert.equal(model.model.resources[0].object.length, 1, 'no assembly object is added');
+  assert.equal(result.next.arguments.arrange, true);
+  assert.equal(result.next.objects, 'separate');
+  await assert.rejects(engine.export({design_path:design, objects:'separate', preserve_plate:true}), /cannot be combined/);
+  await assert.rejects(engine.export({design_path:design, objects:'separate', format:'stl'}), /3MF only/);
+  await assert.rejects(engine.export({design_path:design, objects:'loose'}), /assembly or separate/);
+});

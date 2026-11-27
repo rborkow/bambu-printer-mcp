@@ -9,6 +9,7 @@ export declare const SOLIDCRAFT_TOOLS: ({
             parameters?: undefined;
             format?: undefined;
             quality?: undefined;
+            objects?: undefined;
             preserve_plate?: undefined;
             preview?: undefined;
             output_dir?: undefined;
@@ -42,6 +43,12 @@ export declare const SOLIDCRAFT_TOOLS: ({
                 description: string;
             };
             quality: {
+                type: string;
+                enum: string[];
+                default: string;
+                description: string;
+            };
+            objects: {
                 type: string;
                 enum: string[];
                 default: string;
@@ -100,6 +107,7 @@ export declare class SolidcraftEngine {
                 stl_path: string;
                 arrange: boolean;
             };
+            objects: {} | undefined;
             guidance: string;
         };
         preview_path?: string | undefined;
