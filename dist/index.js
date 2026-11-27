@@ -34,6 +34,7 @@ import { assertBambuNativeAvailable, bambuNativeControlsAvailable, bambuNativeUn
 import { importFileViaBambuConnect } from "./bambu-connect.js";
 import { CadEngine } from "./cad-engine.js";
 import { CadRefusal } from "./cad/refusal.js";
+import { SolidcraftEngine, SOLIDCRAFT_TOOLS } from "./solidcraft-engine.js";
 import { CAD_TOOLS, cadEnabled } from "./cad/contracts.js";
 import { cadExamplesTool } from "./cad/examples.js";
 import { DESIGN_GUIDANCE_TOOL, designGuidance } from "./design-guidance.js";
@@ -1143,6 +1144,7 @@ if (!fs.existsSync(TEMP_DIR)) {
 }
 class BambuPrinterMCPServer {
     constructor() {
+        this.solidcraft = new SolidcraftEngine([TEMP_DIR, ...(process.env.CAD_OUTPUT_DIRS?.split(path.delimiter).filter(Boolean) ?? [])]);
         this.cad = new CadEngine({ outputRoots: [TEMP_DIR, ...(process.env.CAD_OUTPUT_DIRS?.split(path.delimiter).filter(Boolean) ?? [])] });
         this.blender = new BlenderMcpBridge();
         this.fusion = new FusionMcpBridge();
@@ -3037,6 +3039,7 @@ class BambuPrinterMCPServer {
                         }
                     },
                     DESIGN_GUIDANCE_TOOL,
+                    ...SOLIDCRAFT_TOOLS,
                     ...(CAD_ENABLED ? CAD_TOOLS : []),
                     {
                         name: "blender_mcp_status",
@@ -4533,6 +4536,12 @@ class BambuPrinterMCPServer {
                         break;
                     case "cad_examples":
                         result = cadExamplesTool(args ?? {});
+                        break;
+                    case "solidcraft_status":
+                        result = await this.solidcraft.status(args ?? {}, extra.signal);
+                        break;
+                    case "solidcraft_export":
+                        result = await this.solidcraft.export(args ?? {}, extra.signal);
                         break;
                     case "cad_status":
                         if (args && Object.keys(args).length)

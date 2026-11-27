@@ -46,7 +46,10 @@ test('annotations match what the tools do to the printer and files', async t => 
   // The remote read scope is exactly these tools; adding one is a deliberate change here.
   assert.deepEqual(Object.keys(byName).filter(name => byName[name].readOnlyHint).sort(), ['blender_mcp_status', 'cad_check_fit', 'cad_examples', 'cad_status', 'camera_frame',
     'counterpart_diagnostics', 'counterpart_discover_printers', 'counterpart_print_progress', 'counterpart_print_record', 'counterpart_printer_info', 'counterpart_propose_filaments', 'counterpart_self_check', 'counterpart_setup_fields', 'design_guidance', 'get_printer_filaments', 'get_printer_status', 'get_stl_info',
-    'inspect_print_file', 'list_3mf_plate_objects', 'list_3mf_plates', 'list_printer_files', 'list_templates', 'resolve_3mf_ams_slots']);
+    'inspect_print_file', 'list_3mf_plate_objects', 'list_3mf_plates', 'list_printer_files', 'list_templates', 'resolve_3mf_ams_slots', 'solidcraft_status']);
+  assert.equal(byName.solidcraft_export.readOnlyHint, false);
+  assert.equal(byName.solidcraft_export.destructiveHint, false);
+  assert.equal(byName.solidcraft_export.idempotentHint, false);
   // Anything that moves, heats, prints or writes is not read-only and reaches the printer.
   for (const name of ['print_3mf', 'print_3mf_bambu_network', 'start_print', 'start_print_job', 'upload_file', 'pause_print', 'resume_print',
     'cancel_print', 'set_temperature', 'set_fan_speed', 'reread_ams_rfid', 'clear_hms_errors', 'delete_printer_file', 'bambu_network_call']) {

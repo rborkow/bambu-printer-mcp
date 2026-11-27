@@ -12,6 +12,8 @@ const START_PRINT = hints(false, false, false, true);
 /** Starts a print, auto-slicing an unsliced project first, which replaces an earlier slice output of that name. */
 const SLICE_AND_PRINT = hints(false, true, false, true);
 export const TOOL_ANNOTATIONS = {
+    solidcraft_status: READ_LOCAL,
+    solidcraft_export: hints(false, false, false, false),
     cad_status: READ_LOCAL,
     cad_setup: hints(false, true, true, true),
     cad_run: hints(false, false, false, false),

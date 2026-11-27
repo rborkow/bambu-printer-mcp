@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add SolidCraft saved-design export and installation status tools, bounded headless execution, optional previews, and 3MF assembly grouping and plate-preserving slicing hints; prefer the client’s SolidCraft design session while retaining CAD and Fusion fallbacks.
+
 ### Changed
 - `camera_snapshot` with `save_path` returns the saved path without the frame's base64, which overflowed MCP clients' tool-result limits; pass `include_base64: true` to get both.
 
