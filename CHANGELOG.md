@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Offer an explicit native print route and experimental macOS X1C Pause/Resume/Stop with `BAMBU_NATIVE_CONTROLS=x1c` (heater-off keeps its existing route until X1C accepts the native temperature message on hardware); retain existing defaults and X2D routing.
+
+- Track native control sequence replies and printer refusals, wait for certificates, and isolate control configuration from Studio. Retry Stop once only after a proven pre-dispatch connection timeout.
+
 ### Changed
 - `camera_snapshot` with `save_path` returns the saved path without the frame's base64, which overflowed MCP clients' tool-result limits; pass `include_base64: true` to get both.
 

@@ -1602,8 +1602,8 @@ export class BambuImplementation {
       const printer = dispatch ? undefined : await this.getPrinter(host, serial, token);
       assertActive();
       if (dispatch) {
-        await dispatch(assertActive, pausedJob);
-        return { status: "success", message: `Resume command sent for ${jobName}.`, jobName, bytesVerified };
+        const result = await dispatch(assertActive, pausedJob);
+        return { ...result, jobName, bytesVerified };
       }
       const resume = studioControl("resume");
       const answered = watchControlReply(printer!, resume.command, resume.sequenceId, controlReplyMs());

@@ -62,6 +62,10 @@ if (['--print-authorized', '--command-authorized'].includes(process.argv[2])) {
   if (${crashAfterDispatch} && process.argv[2] === '--print-authorized') process.exit(1);
 }
 console.log('native_print result=0');
+if (event.command.print) {
+  console.log('native_command result=0');
+  console.log('native_reply='+JSON.stringify({print:{...event.command.print,result:'success'}}));
+}
 `, { mode: 0o755 });
   const zip = new JSZip();
   zip.file("3D/3dmodel.model", '<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources/><build/></model>');
@@ -132,7 +136,7 @@ console.log('native_print result=0');
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["--import", `data:text/javascript,${encodeURIComponent(preload)}`, entry], cwd: dir,
-    env: { ...process.env, MCP_TRANSPORT: "stdio", BAMBU_MODEL: model, BAMBU_PRINTER_MODEL: "",
+    env: { ...process.env, MCP_TRANSPORT: "stdio", BAMBU_MODEL: model, BAMBU_PRINTER_MODEL: "", BAMBU_NATIVE_CONFIG_DIR: platform === "linux" ? path.join(dir,"native-home","config") : path.join(dir,"control-config"),
       BAMBU_PRINTER_HOST: "127.0.0.1", BAMBU_PRINTER_SERIAL: x1c ? "00MTEST" : "20PTEST", BAMBU_PRINTER_ACCESS_TOKEN: "DUMMY",
       // An empty private home keeps a developer's real Linux setup out of the test.
       BAMBU_NATIVE_HELPER: installedHelper ? helper : "",
@@ -919,4 +923,44 @@ test('native helper failure after authorized print retains the exact unconfirmed
   assert.deepEqual(saved.structuredContent.record.dispatch.mapping,[0]);
   assert.equal(saved.structuredContent.record.dispatch.outcome,'unconfirmed');
   assert.equal(saved.structuredContent.physical.status,'unknown');
+});
+
+for (const name of ["cancel_print", "pause_print"]) test(`X1C opt-in routes ${name} natively on macOS`, async t => {
+  const s = await server(t, { model:"x1c", printer:"x1c", env:{BAMBU_NATIVE_CONTROLS:"x1c"} });
+  const result = await s.client.callTool({name,arguments:{}});
+  assert.notEqual(result.isError,true,JSON.stringify(result));
+  assert.match(result.content[0].text,/"confirmed":\s*true/);
+  assert.equal((await s.events()).filter(e=>e.kind==="helper").length,1);
+  assert.equal((await s.events()).some(e=>e.kind==="mqtt"),false);
+});
+test("X1C opt-in resumes inspected bytes natively", async t => {
+  const s=await server(t,{model:"x1c",printer:"x1c",storage:{sdcard:true},resumeAfterPrint:true,env:{BAMBU_NATIVE_CONTROLS:"x1c"}});
+  assert.notEqual((await s.print({connection_mode:"bambu_native",ams_slots:[0]})).isError,true);
+  const result=await s.client.callTool({name:"resume_print",arguments:{}});
+  assert.notEqual(result.isError,true,JSON.stringify(result));
+  assert.match(result.content[0].text,/"confirmed":\s*true/);
+  assert.equal((await s.events()).some(e=>e.command?.print?.command==="resume"),true);
+});
+
+test("X1C opt-in does not enable Linux native controls",async t=>{
+  const s=await server(t,{platform:"linux",model:"x1c",printer:"x1c",env:{BAMBU_NATIVE_CONTROLS:"x1c"}});
+  assert.notEqual((await s.client.callTool({name:"pause_print",arguments:{}})).isError,true);
+  assert.equal((await s.events()).some(e=>e.kind==="helper"),false);
+});
+test("X1C native pause rechecks the observed job before dispatch",async t=>{
+  const s=await server(t,{model:"x1c",printer:"x1c",dispatchStorage:{subtask_name:"replacement"},env:{BAMBU_NATIVE_CONTROLS:"x1c"}});
+  const result=await s.client.callTool({name:"pause_print",arguments:{}});
+  assert.equal(result.isError,true);
+  assert.match(result.content[0].text,/job changed/);
+  assert.equal((await s.events()).some(e=>e.kind==="dispatched"),false);
+});
+test("native print route is explicitly selectable without changing the default",async t=>{
+  const s=await server(t,{model:"x1c",printer:"x1c"});
+  const read=JSON.parse((await s.client.callTool({name:"counterpart_print_route",arguments:{}})).content[0].text);
+  assert.notEqual(read.route,"native");
+  assert.ok(read.choices.includes("native"));
+  const selected=JSON.parse((await s.client.callTool({name:"counterpart_print_route",arguments:{route:"native"}})).content[0].text);
+  assert.equal(selected.route,"native");
+  assert.equal(selected.mode,"bambu_native");
+  assert.equal((await s.events()).some(e=>e.kind==="helper"||e.kind==="mqtt"),false);
 });

@@ -71,3 +71,5 @@ Thanks to the [basic-ftp maintainers](https://github.com/patrickjuchli/basic-ftp
 - **David Montgomery** — reports and reproduces the macOS installed-slicer `bamboo_model` test scratch leak (#139); the regression is verified with the real isolated Bambu Studio CLI and mocked scratch cleanup.
 
 - [Jan Jaap (@jappyjan)](https://github.com/jappyjan) — reports the stock H2S chipless-nozzle `stat: 5` failure, supplies its firmware/status evidence and contributes the fix and regression in [#172](https://github.com/DMontgomery40/bambu-printer-mcp/pull/172). The integrated exception is restricted to H2S; hardware evidence is the contributor report, not a maintainer physical print test.
+
+- [David Montgomery (DMontgomery40)](https://github.com/DMontgomery40) — authors native control reply tracking, isolated configuration, and certificate readiness in experimental commits 507bdf3, b66a7cd, and be88434, ported here with mocked validation.

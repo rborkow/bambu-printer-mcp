@@ -425,7 +425,7 @@ function mappedTray(raw: Record<string,any>, index: number): Record<string,any> 
 }
 
 /** Verifies reported configuration, not a physical nozzle/spool inspection. */
-export function validatePrinterState(status: any, requirements: PrinterStateRequirements): ValidatedPrinterState {
+export function validateFreshPrinterIdentity(status: any, requestedModel: string) {
   if (status?.connected !== true) throw new Error("A connected printer is required for safety validation.");
   const observation = status.observation;
   const now = Date.now();
@@ -438,8 +438,15 @@ export function validatePrinterState(status: any, requirements: PrinterStateRequ
   const identity = observedIdentity(raw, String(status.serial ?? ""));
   // No bambu_model can name a status-only printer, so this is refused whatever model was requested.
   assertNotStatusOnly(identity.model);
-  const model = normalizeModel(requirements.model);
-  if (!model || !identity.model || model !== identity.model) throw new Error(`Printer model identity mismatch: requested ${requirements.model}, observed ${identity.model ?? "unknown"}.`);
+  const model = normalizeModel(requestedModel);
+  if (!model || !identity.model || model !== identity.model) throw new Error(`Printer model identity mismatch: requested ${requestedModel}, observed ${identity.model ?? "unknown"}.`);
+  return identity;
+}
+
+export function validatePrinterState(status: any, requirements: PrinterStateRequirements): ValidatedPrinterState {
+  const identity = validateFreshPrinterIdentity(status, requirements.model);
+  const raw = status.raw;
+  const model = normalizeModel(requirements.model)!;
   validateErrors(raw, requirements.requireIdle !== false, identity.observedSerial ?? "", model);
   if (requirements.requireLoadedFilament && (raw.ams?.tray_now !== undefined || Array.isArray(raw.ams?.ams))) {
     const current = finiteNumber(raw.ams?.tray_now);

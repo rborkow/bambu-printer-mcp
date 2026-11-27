@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { controlReply, refusedControlMessage } from "./control-reply.js";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +40,7 @@ export type BambuNativeControlOptions = {
   host: string;
   serial: string;
   token: string;
+  configDir?: string;
   messageJson: string;
   qos?: number;
   flag?: number;
@@ -780,16 +782,21 @@ export async function sendCommandWithBambuNative(options: BambuNativeControlOpti
     throw new Error(`Native ${validated.command} requires a beforeDispatch fresh-state check.`);
   }
   if (isEmergencyCommand(validated.messageJson)) await interruptNativeOperations(options.serial);
+  const configDir = options.configDir || process.env.BAMBU_NATIVE_CONFIG_DIR ||
+    path.join(os.homedir(), ".config", "bambu-printer-mcp", "bambu-native-control");
+  fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
   const qos = options.qos === undefined ? 0 : Math.trunc(options.qos);
   const flag = options.flag === undefined ? 0 : Math.trunc(options.flag);
   if (!Number.isFinite(qos) || !Number.isFinite(flag) || qos < 0 || qos > 1 || flag < 0 || flag > 1) {
     throw new Error("X2D native control qos and flag must be 0 or 1.");
   }
 
-  const result = await runNativeHelper(
+  const deadline = Date.now() + 60_000;
+  const run = () => runNativeHelper(
     execution?.beforeDispatch ? "--command-authorized" : "--command",
     {
       ...process.env,
+      BAMBU_NATIVE_CONFIG_DIR: configDir,
       BAMBU_NATIVE_COMMAND_CONFIRM: "1",
       BAMBU_NATIVE_HOST: options.host,
       BAMBU_NATIVE_SERIAL: options.serial,
@@ -798,10 +805,19 @@ export async function sendCommandWithBambuNative(options: BambuNativeControlOpti
       BAMBU_NATIVE_COMMAND_QOS: String(qos),
       BAMBU_NATIVE_COMMAND_FLAG: String(flag),
     },
-    30_000,
+    Math.max(1, Math.min(30_000, deadline - Date.now())),
     undefined,
     execution
   );
+  let result = await run();
+  // Only this explicit pre-send failure proves that no control was dispatched.
+  // A helper crash, timeout or missing reply is never grounds for replay.
+  if (print?.command === "stop" && result.resultCode !== 0 && !result.signal &&
+      result.authorizedAttempts === 0 && !result.updates.some(line => /^native_command(?:_dispatch| result)=/.test(line)) &&
+      [...result.updates, result.stderr].some(line => line.includes("local MQTT connection timed out before native command")) &&
+      Date.now() < deadline) {
+    result = await run();
+  }
   if (result.resultCode !== 0) {
     const detail = [
       ...result.updates,
@@ -809,10 +825,21 @@ export async function sendCommandWithBambuNative(options: BambuNativeControlOpti
     ]
       .filter((line) => line.startsWith("native_error=") || line.startsWith("native_command result=") || line.startsWith("local MQTT connection"))
       .join("; ");
-    throw new Error(`Bambu native X2D control failed (${result.resultCode})${detail ? `: ${detail}` : "."}`);
+    const uncertain = result.updates.some(line => line.startsWith("native_command_dispatch=") || line === "native_command result=0") &&
+      !result.updates.some(line => /^native_command result=-[0-9]+$/.test(line));
+    throw new Error(`Bambu native control failed (${result.resultCode})${detail ? `: ${detail}` : "."}` +
+      (uncertain ? " Dispatch is uncertain; check printer status and job name before retrying. Never replay automatically." : ""));
+
   }
+  const reply = result.updates.filter(line => line.startsWith("native_reply="))
+    .map(line => controlReply(line.slice("native_reply=".length), print?.command, String(print?.sequence_id)))
+    .find(Boolean);
+  if (reply && !reply.accepted) throw new Error(refusedControlMessage(validated.command, "the local network", reply.errCode));
+  const taskControl = ["pause", "resume", "stop"].includes(validated.command);
   return {
-    status: "success",
+    status: taskControl && !reply ? "dispatched_unconfirmed" : "success",
+    confirmed: Boolean(reply),
+    ...(taskControl && !reply ? { message: "Control dispatched, unconfirmed. Check printer status before retrying; do not replay automatically." } : {}),
     route: "bambu:///local",
     command: validated.command,
     updates: result.updates,

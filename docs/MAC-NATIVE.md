@@ -41,6 +41,24 @@ for controls only, and the rest of this plan still applies.
 
 ### 2. Native controls for every model on macOS
 
+Experimental implementation: set `BAMBU_NATIVE_CONTROLS=x1c` (comma-separated
+model list) to route X1C Pause/Resume/Stop (not heater-off yet) through the native
+helper on macOS. It requires `BAMBU_MODEL=x1c` and a matching `00M` serial.
+The default stays unchanged until step 1 passes on hardware. Other new models
+remain ineligible. Choose `counterpart_print_route(route="native")` explicitly
+to use native printing; this does not enable experimental controls by itself.
+
+Controls use a separate `~/.config/bambu-printer-mcp/bambu-native-control`
+directory (override with `BAMBU_NATIVE_CONFIG_DIR`). The helper waits for the
+certificate (`BAMBU_NATIVE_CERT_WAIT_MS`, default 6000) and then the matching
+command/sequence reply (`BAMBU_NATIVE_COMMAND_REPLY_MS`, default 6000).
+A successful publish alone is reported as dispatched, unconfirmed. Stop retries
+one explicit pre-dispatch connection timeout within a 60-second overall deadline;
+dispatch uncertainty never triggers replay. Check printer status and job name
+before manually retrying an unconfirmed control.
+
+Validation for this implementation is mocked only; the hardware spike remains open.
+
 - Replace the X2D-only gate with a per-model capability (start with X1C; others as hardware evidence arrives).
 - Keep the shared safety gate: fresh observed identity, the job observed before a control, stop and heater-off
   never prompting.

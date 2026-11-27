@@ -78,7 +78,7 @@ import { resolveStudioPrintOptions, usedNozzleCount, type CallerPrintOptions } f
 import { inspectPrintFile } from "./safety/print-file.js";
 import { previewPrintFile } from "./safety/print-preview.js";
 import { loadSafe3mfArchive } from "./safety/archive.js";
-import { SERIAL_MODELS, internalPrintingSupported, externalStorageState, validatePrinterState } from "./safety/printer-state.js";
+import { SERIAL_MODELS, internalPrintingSupported, externalStorageState, validateFreshPrinterIdentity, validatePrinterState } from "./safety/printer-state.js";
 import { isStatusOnlyModel, statusOnlyDisplayName, statusOnlyModelFromSerial, statusOnlyModelValueMessage } from "./safety/status-only-models.js";
 import { isDualNozzleModel } from "./safety/limits.js";
 import { withPrinterOperation, withPrintSnapshot, uniquePrintName } from "./safety/artifact.js";
@@ -3661,11 +3661,11 @@ class BambuPrinterMCPServer {
           },
           {
             name: "counterpart_print_route",
-            description: "Counterpart contract (counterpart/1): how this server reaches the printer for prints and for Stop/Pause/Resume. route is \"lan\" (the local network through FULU's BambuNetwork bridge, or the configured X2D native or Bambu Connect mode), \"cloud\" (Bambu Cloud through FULU's bridge) or \"developer\" (the local network straight to a printer in LAN Only + Developer Mode, whose Pause, Resume and Stop need no Bambu app). options lists each with its label, whether it can be chosen here (and why not) and what controls do on it; choices lists the ids that can be chosen. mode and type are BAMBU_DEFAULT_CONNECTION_MODE and BAMBU_DEFAULT_CONNECTION_TYPE as resolved. Pass route to change it: the change applies to the next print and control at once, and is saved to the .env file in this server's working directory when that file exists (savedTo; null otherwise). Sends nothing to the printer.",
+            description: "Counterpart contract (counterpart/1): how this server reaches the printer for prints and for Stop/Pause/Resume. route is \"lan\" (the local network through FULU's BambuNetwork bridge, or the configured X2D native or Bambu Connect mode), \"cloud\" (Bambu Cloud through FULU's bridge) or \"native\" (Bambu Studio networking plug-in; experimental controls require BAMBU_NATIVE_CONTROLS=x1c), or \"developer\" (the local network straight to a printer in LAN Only + Developer Mode, whose Pause, Resume and Stop need no Bambu app). options lists each with its label, whether it can be chosen here (and why not) and what controls do on it; choices lists the ids that can be chosen. mode and type are BAMBU_DEFAULT_CONNECTION_MODE and BAMBU_DEFAULT_CONNECTION_TYPE as resolved. Pass route to change it: the change applies to the next print and control at once, and is saved to the .env file in this server's working directory when that file exists (savedTo; null otherwise). Sends nothing to the printer.",
             inputSchema: {
               type: "object",
               properties: {
-                route: { type: "string", enum: ["lan", "cloud", "developer"], description: "Change the route. Omit to read it." }
+                route: { type: "string", enum: ["lan", "cloud", "developer", "native"], description: "Change the route. Omit to read it." }
               },
               additionalProperties: false
             }
@@ -3879,6 +3879,13 @@ class BambuPrinterMCPServer {
       const nativeUnavailableReason = () =>
         (nativeUnavailable ??= x2dTarget ? bambuNativeUnavailableReason() ?? null : "The selected printer is not an X2D.");
       const nativeControls = () => nativeUnavailableReason() === null;
+      // New models are experimental and explicitly enabled; never widen the
+      // X2D-only raw/device controls below through this capability.
+      const x1cNativeControls = process.platform === "darwin" &&
+        String(args?.bambu_model ?? DEFAULT_BAMBU_MODEL).trim().toLowerCase() === "x1c" &&
+        bambuSerial.trim().toUpperCase().startsWith("00M") &&
+        (process.env.BAMBU_NATIVE_CONTROLS || "").split(",").map(model => model.trim().toLowerCase()).includes("x1c");
+      const nativeTaskControls = () => x1cNativeControls || nativeControls();
       // Linux sent X2D stop and heater-off over MQTT before the native route
       // existed. Send them over both routes there: a stuck helper must not
       // delay an emergency control, and a repeated stop or heater-off is
@@ -3890,19 +3897,33 @@ class BambuPrinterMCPServer {
       // Print controls go over the same connection as the print (resolveConnection).
       // undefined keeps the direct MQTT route in BambuImplementation.
       const printerControl = (command: "stop" | "pause" | "resume") => {
-        const nativeCommand = (assertActive?: () => void, beforeDispatch?: () => Promise<void>) => sendNativeCommand({ host, serial: bambuSerial, token: bambuToken,
-          messageJson: JSON.stringify({ print: { command, param: "", sequence_id: String(Date.now()) } }), qos: 1 },
-          command === "resume" ? { signal: extra.signal, assertActive, beforeDispatch } : undefined);
-        // The selected route decides first: a job started over FULU's bridge (LAN or cloud) is controlled there,
-        // even on an X2D whose native plug-in is installed. Otherwise an X2D uses its native route when it can.
+        const nativeCommand = async (assertActive?: () => void, beforeDispatch?: () => Promise<void>) => {
+          let check = beforeDispatch;
+          if (x1cNativeControls) {
+            const observe = async () => {
+              const status = await this.bambu.getSafetyStatus(host, bambuSerial, bambuToken);
+              validateFreshPrinterIdentity(status, "x1c");
+              return JSON.stringify([status.raw.subtask_id, status.raw.task_id, status.raw.subtask_name, status.raw.gcode_file]);
+            };
+            const job = await observe();
+            check = async () => {
+              await beforeDispatch?.();
+              if (await observe() !== job) throw new Error("Printer job changed before native control; nothing sent.");
+            };
+          }
+          return sendNativeCommand({ host, serial: bambuSerial, token: bambuToken,
+          messageJson: JSON.stringify({ print: { command, param: "", sequence_id: String(x1cNativeControls ? 20_000 + (Date.now() % 1_000_000) : Date.now()) } }), qos: 1 },
+          check ? { signal: extra.signal, assertActive, beforeDispatch: check } : undefined);
+        };
+        // X1C explicitly opts in to native task controls. X2D preserves its
+        // selected FULU route and otherwise uses native controls when available.
         const route = resolveConnection(args);
-        if (route.mode !== "bambu_network" && nativeControls()) {
+        if ((x1cNativeControls || route.mode !== "bambu_network") && nativeTaskControls()) {
           return command === "stop"
             ? linuxEmergency(() => nativeCommand(), signal => this.bambu.sendStopOverMqtt(host, bambuSerial, bambuToken, signal))
             : nativeCommand;
         }
-        // Native controls are X2D-only. Another model printed natively (X1C)
-        // is stopped, paused and resumed over direct MQTT, as its default route is.
+        // Without the experimental opt-in, other models retain their configured controls.
         if (route.mode === "bambu_native" && x2dTarget) throw new Error(nativeUnavailableReason()!);
         if (route.mode !== "bambu_network") return undefined;
         return (assertActive?: () => void, beforeDispatch?: () => Promise<void>) => {
@@ -4371,6 +4392,8 @@ class BambuPrinterMCPServer {
               heaterModel || undefined,
               args?.material !== undefined ? String(args.material) : undefined,
               Number(args?.nozzle_diameter ?? DEFAULT_NOZZLE_DIAMETER),
+              // Heater-off stays on its existing route for X1C: the X2D-format set_*_temp
+              // messages are unverified on X1C firmware, and an emergency control must not change format untested.
               (args.temperature === 0 ? nativeControls() : heaterModel === "x2d" && bambuNativeControlsAvailable())
                 ? (heater, target, assertActive, beforeDispatch) => {
                     const native = () => sendNativeCommand({ host, serial: bambuSerial, token: bambuToken,
@@ -5206,7 +5229,7 @@ class BambuPrinterMCPServer {
             // resolved from the start-up configuration so it survives choosing another route.
             const ownLocal = ownLocalOf({ mode: CONFIGURED_CONNECTION.mode || (routeModel === "x2d" ? "bambu_native" : ""), type: CONFIGURED_CONNECTION.type || "lan" });
             if (args?.route !== undefined) {
-              if (!PRINT_ROUTES.includes(args.route as PrintRoute)) throw new Error('route must be "lan", "cloud" or "developer".');
+              if (!PRINT_ROUTES.includes(args.route as PrintRoute)) throw new Error('route must be "lan", "cloud", "developer" or "native".');
               const next = connectionForRoute(args.route as PrintRoute, resolveConnection({}, routeModel), bridgeConfigured, ownLocal);
               // dotenv loaded .env from the working directory at start; a client's own env block has no file to update.
               const file = path.resolve(process.cwd(), ".env");

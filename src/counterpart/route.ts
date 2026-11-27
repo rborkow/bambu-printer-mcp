@@ -1,4 +1,5 @@
 /** counterpart_print_route: how this server reaches the printer for prints and controls (PRD §8.4). */
+import { bambuNativeUnavailableReason } from "../bambu-native.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -7,8 +8,8 @@ import path from "node:path";
  * cloud: Bambu Cloud through FULU's bridge.
  * developer: the local network straight to the printer (lan_mqtt_ftps), for a printer in LAN Only + Developer Mode.
  */
-export type PrintRoute = "lan" | "cloud" | "developer";
-export const PRINT_ROUTES: readonly PrintRoute[] = ["lan", "cloud", "developer"];
+export type PrintRoute = "lan" | "cloud" | "developer" | "native";
+export const PRINT_ROUTES: readonly PrintRoute[] = ["lan", "cloud", "developer", "native"];
 export interface Connection { mode: string; type: string }
 
 /** One connection a person can choose, as counterpart_print_route reports it. */
@@ -26,6 +27,7 @@ export interface RouteOption {
 const OWN_LOCAL_MODES = new Set(["bambu_native", "bambu_connect"]);
 
 export function routeOf(connection: Connection): PrintRoute {
+  if (connection.mode === "bambu_native") return "native";
   if (connection.mode === "bambu_network") return connection.type === "cloud" ? "cloud" : "lan";
   if (connection.mode === "lan_mqtt_ftps") return "developer";
   return "lan";
@@ -45,11 +47,15 @@ export function routeOptions(current: Connection, bridgeConfigured: boolean, own
   const signedControls = "Uses the configured authenticated connection for Print, Pause, Resume and Stop.";
   const needsBridge = "Needs FULU's BambuNetwork bridge (BAMBU_NETWORK_BRIDGE_COMMAND).";
   const local = bridgeConfigured || ownLocal !== undefined;
+  const nativeReason = bambuNativeUnavailableReason();
   return [
     { id: "lan", label: "Local network", available: local, ...(local ? {} : { reason: needsBridge }), controls: signedControls },
     { id: "cloud", label: "Bambu Cloud", available: bridgeConfigured, ...(bridgeConfigured ? {} : { reason: needsBridge }), controls: signedControls },
     { id: "developer", label: "Local network, Developer Mode", available: true,
       controls: "Pause, Resume and Stop go straight to the printer. Turn on LAN Only and Developer Mode on the printer first; Bambu Cloud and Bambu Handy then stop working for it." },
+    { id: "native", label: "Bambu Studio native plug-in", available: nativeReason === undefined,
+      ...(nativeReason ? { reason: nativeReason } : {}),
+      controls: "X2D uses native controls. X1C on macOS requires BAMBU_NATIVE_CONTROLS=x1c; otherwise controls keep their existing route." },
   ];
 }
 
@@ -60,6 +66,7 @@ export function routeOptions(current: Connection, bridgeConfigured: boolean, own
 export function connectionForRoute(route: PrintRoute, current: Connection, bridgeConfigured = true, ownLocal = ownLocalOf(current)): Connection {
   const option = routeOptions(current, bridgeConfigured, ownLocal).find(item => item.id === route);
   if (!option?.available) throw new Error(`The ${option?.label ?? route} connection isn't available here. ${option?.reason ?? ""}`.trim());
+  if (route === "native") return { mode: "bambu_native", type: "lan" };
   if (route === "cloud") return { mode: "bambu_network", type: "cloud" };
   if (route === "developer") return { mode: "lan_mqtt_ftps", type: "lan" };
   return ownLocal ?? { mode: "bambu_network", type: "lan" };

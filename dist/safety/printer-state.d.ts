@@ -98,6 +98,11 @@ export declare function hiddenHmsKeys(raw: unknown, serial: string, model: strin
 export declare const PAUSE_NOTICE = 50364435;
 export declare function isPauseNotice(raw: Record<string, any>, requireIdle: boolean): boolean;
 /** Verifies reported configuration, not a physical nozzle/spool inspection. */
+export declare function validateFreshPrinterIdentity(status: any, requestedModel: string): {
+    model: string | undefined;
+    observedSerial: any;
+    identitySource: string;
+};
 export declare function validatePrinterState(status: any, requirements: PrinterStateRequirements): ValidatedPrinterState;
 /** Manual M104 cannot remap filament slots. Validate the material already at the nozzle. */
 export declare function manualHeatingRequirements(status: any, model: string, nozzleDiameter: number, material: string): PrinterStateRequirements;

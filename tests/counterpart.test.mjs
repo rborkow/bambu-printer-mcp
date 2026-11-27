@@ -403,8 +403,8 @@ test("counterpart_print_route reads the route and changes it in the running serv
   const { client, directory } = await server(t, WITH_BRIDGE, { ".env": { text: dotenv, mode: 0o600 } });
   const read = await route(client);
   assert.deepEqual([read.route, read.mode, read.type, read.savedTo], ["lan", "bambu_network", "lan", null]);
-  assert.deepEqual(read.choices, ["lan", "cloud", "developer"]);
-  assert.deepEqual(read.options.map(option => [option.id, option.label, option.available]),
+  assert.deepEqual(read.choices.filter(id=>id!=="native"), ["lan", "cloud", "developer"]);
+  assert.deepEqual(read.options.filter(option=>option.id!=="native").map(option => [option.id, option.label, option.available]),
     [["lan", "Local network", true], ["cloud", "Bambu Cloud", true], ["developer", "Local network, Developer Mode", true]]);
   assert.match(read.options[0].controls, /authenticated connection.*Pause, Resume and Stop/);
   assert.match(read.options[2].controls, /Developer Mode/);
@@ -429,7 +429,7 @@ test("counterpart_print_route without FULU's bridge: only Developer Mode can be 
   const { client, directory } = await server(t, { ...ROUTE_ENV, BAMBU_DEFAULT_CONNECTION_MODE: "lan_mqtt_ftps" });
   const read = await route(client);
   assert.deepEqual([read.route, read.mode], ["developer", "lan_mqtt_ftps"]);
-  assert.deepEqual(read.choices, ["developer"]);
+  assert.deepEqual(read.choices.filter(id=>id!=="native"), ["developer"]);
   assert.match(read.options.find(option => option.id === "cloud").reason, /BAMBU_NETWORK_BRIDGE_COMMAND/);
   for (const unavailable of ["cloud", "lan"]) {
     const refused = await client.callTool({ name: "counterpart_print_route", arguments: { route: unavailable } });
@@ -445,8 +445,8 @@ test("counterpart_print_route without FULU's bridge: only Developer Mode can be 
 test("counterpart_print_route keeps an X2D native setup as its local network", async t => {
   const { client } = await server(t, { ...ROUTE_ENV, BAMBU_MODEL: "x2d", BAMBU_DEFAULT_CONNECTION_MODE: "bambu_native" });
   const read = await route(client);
-  assert.deepEqual([read.route, read.mode], ["lan", "bambu_native"]);
-  assert.deepEqual(read.choices, ["lan", "developer"]);
+  assert.deepEqual([read.route, read.mode], ["native", "bambu_native"]);
+  assert.deepEqual(read.choices.filter(id=>id!=="native"), ["lan", "developer"]);
   assert.equal((await route(client, { route: "lan" })).mode, "bambu_native");
 });
 
@@ -455,7 +455,7 @@ test("an X2D on its implicit native route can choose the local network, and come
   for (const env of [{ ...ROUTE_ENV, BAMBU_MODEL: "x2d" }, { ...WITH_BRIDGE, BAMBU_MODEL: "x2d", BAMBU_DEFAULT_CONNECTION_MODE: "bambu_native" }]) {
     const { client } = await server(t, env);
     const read = await route(client);
-    assert.deepEqual([read.route, read.mode], ["lan", "bambu_native"]);
+    assert.deepEqual([read.route, read.mode], ["native", "bambu_native"]);
     assert.equal((await route(client, { route: "lan" })).mode, "bambu_native");
     assert.equal((await route(client, { route: "developer" })).mode, "lan_mqtt_ftps");
     assert.ok((await route(client)).choices.includes("lan"), "the native local route is still offered");

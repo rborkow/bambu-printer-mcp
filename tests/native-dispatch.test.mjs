@@ -18,16 +18,20 @@ const hazardousCommands = [
   { command: "clean_print_error", sequence_id: "1" },
 ];
 
-async function helper(t, { attempts = 1, ignoreTerm = false, noRequest = false, legacy = false, crash = false, printResult = 0 } = {}) {
+async function helper(t, { attempts = 1, ignoreTerm = false, noRequest = false, legacy = false, crash = false, printResult = 0, reply, preFailures = 0, postFailure = false } = {}) {
   const directory = await trackedMkdtemp(path.join(os.tmpdir(), "bambu-native-dispatch-"));
   const events = path.join(directory, "events.jsonl");
   const executable = path.join(directory, "helper.mjs");
   await fs.writeFile(events, "");
   await fs.writeFile(executable, `#!/usr/bin/env node
-import {appendFileSync} from 'node:fs';
+import {appendFileSync, readFileSync, existsSync} from 'node:fs';
 import {createInterface} from 'node:readline';
 const record = value => appendFileSync(${JSON.stringify(events)}, JSON.stringify(value)+'\\n');
-record({kind:'started',pid:process.pid,mode:process.argv[2]});
+const starts = readFileSync(${JSON.stringify(events)}, 'utf8').trim().split('\\n').filter(Boolean).map(JSON.parse).filter(e=>e.kind==='started').length;
+record({kind:'started',pid:process.pid,mode:process.argv[2],configExists:existsSync(process.env.BAMBU_NATIVE_CONFIG_DIR)});
+if (starts < ${preFailures}) { console.error('native_error=local MQTT connection timed out before native command'); process.exit(1); }
+if (${postFailure}) { console.log('native_command_dispatch=1'); console.error('native_error=local MQTT connection timed out before native command'); process.exit(1); }
+if (${JSON.stringify(reply)} !== undefined) console.log('native_reply='+JSON.stringify({print:${JSON.stringify(reply)}}));
 if (${ignoreTerm}) process.on('SIGTERM',()=>{});
 if (${legacy}) {
   if(!['--print','--command'].includes(process.argv[2])) process.exit(2);
@@ -48,6 +52,9 @@ if (${crash}) process.kill(process.pid, 'SIGTERM');
 else process.exit(${printResult} === 0 ? 0 : 20);
 `, { mode: 0o755 });
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const previousConfig = process.env.BAMBU_NATIVE_CONFIG_DIR;
+  process.env.BAMBU_NATIVE_CONFIG_DIR = directory;
+  t.after(() => { if (previousConfig === undefined) delete process.env.BAMBU_NATIVE_CONFIG_DIR; else process.env.BAMBU_NATIVE_CONFIG_DIR = previousConfig; });
   const previous = process.env.BAMBU_NATIVE_HELPER;
   Object.defineProperty(process, "platform", { value: "darwin" });
   process.env.BAMBU_NATIVE_HELPER = executable;
@@ -138,7 +145,7 @@ test("stop and both heater-off commands remain available without fresh-state aut
   for (const command of [{ command: "stop" },
     { command: "set_bed_temp", sequence_id: "1", temp: 0 },
     { command: "set_nozzle_temp", sequence_id: "1", extruder_index: 0, target_temp: 0 }]) {
-    assert.equal((await sendCommandWithBambuNative(controlOptions(command))).status, "success");
+    assert.equal((await sendCommandWithBambuNative(controlOptions(command))).status, command.command === "stop" ? "dispatched_unconfirmed" : "success");
   }
   assert.deepEqual((await events()).map(e => e.mode), ["--command", "--command", "--command"]);
 });
@@ -179,6 +186,7 @@ test("compiled native operation requires renewed parent approval after certifica
 #include ${JSON.stringify(source)}
 #undef main
 BBL::OnLocalConnectedFn connected;
+std::function<void(std::string,std::string)> localMessage;
 int main(int argc, char **argv) {
   NativeApi api;
   api.createAgent = [](std::string) -> void* { return reinterpret_cast<void*>(1); };
@@ -192,13 +200,16 @@ int main(int argc, char **argv) {
   api.setPrinterConnected = [](void*,std::function<void(std::string)>) { return 0; };
   api.setLocalConnect = [](void*,BBL::OnLocalConnectedFn callback) { connected=callback; return 0; };
   api.setMessage = [](void*,std::function<void(std::string,std::string)>) { return 0; };
-  api.setLocalMessage = api.setMessage;
+  api.setLocalMessage = [](void*,std::function<void(std::string,std::string)> callback) { localMessage=callback; return 0; };
   api.updateCert = [](void*) { return 0; };
-  api.installDeviceCert = [](void*,std::string,bool) {};
+  api.installDeviceCert = [](void*,std::string serial,bool) { localMessage(serial,"device_cert_installed"); };
   api.connectPrinter = [](void*,std::string serial,std::string,std::string,std::string,bool) { connected(0,serial,""); return 0; };
   api.sendMessageToPrinter = [](void*,std::string,std::string message,int,int) {
     if(message != envOr("BAMBU_NATIVE_COMMAND_JSON")) return 0;
-    static int attempts=0; outputLine("stub_control_dispatch="+std::to_string(++attempts)); return attempts==1 ? -4030 : 0;
+    static int attempts=0; outputLine("stub_control_dispatch="+std::to_string(++attempts));
+    if(attempts==1) return -4030;
+    localMessage(envOr("BAMBU_NATIVE_SERIAL"), message);
+    return 0;
   };
   api.startLocalPrint = [](void*,BBL::PrintParams,BBL::OnUpdateStatusFn,BBL::WasCancelledFn) {
     static int attempts=0; outputLine("stub_dispatch="+std::to_string(++attempts)); return attempts==1 ? -4030 : 0;
@@ -207,6 +218,8 @@ int main(int argc, char **argv) {
   setenv("BAMBU_NATIVE_COMMAND_CONFIRM","1",1);
   setenv("BAMBU_NATIVE_CERT_RETRY_SECONDS","1",1);
   setenv("BAMBU_NATIVE_CONTROL_RETRY_MS","250",1);
+  setenv("BAMBU_NATIVE_CERT_WAIT_MS","0",1);
+  setenv("BAMBU_NATIVE_COMMAND_REPLY_MS","0",1);
   const auto operation = argc==2 && std::string(argv[1])=="--command-authorized"
     ? NativeOperation::AuthorizedCommand : NativeOperation::Print;
   try { runOperation(api,operation); return 0; }
@@ -218,6 +231,9 @@ int main(int argc, char **argv) {
   const file = path.join(directory, "test.3mf");
   await fs.writeFile(file, "stub plug-in never reads this fixture");
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const previousConfig = process.env.BAMBU_NATIVE_CONFIG_DIR;
+  process.env.BAMBU_NATIVE_CONFIG_DIR = directory;
+  t.after(() => { if (previousConfig === undefined) delete process.env.BAMBU_NATIVE_CONFIG_DIR; else process.env.BAMBU_NATIVE_CONFIG_DIR = previousConfig; });
   const previous = process.env.BAMBU_NATIVE_HELPER;
   Object.defineProperty(process, "platform", { value: "darwin" });
   process.env.BAMBU_NATIVE_HELPER = executable;
@@ -257,6 +273,8 @@ int main(int argc, char **argv) {
     beforeDispatch: async () => { commandChecks++; },
   });
   assert.equal(commandChecks, 2);
+  assert.equal(commandResult.confirmed, true);
+  assert.ok(commandResult.updates.includes("native_cert_ready=1"));
   assert.deepEqual(commandResult.updates.filter(line => line.startsWith("stub_control_dispatch=")),
     ["stub_control_dispatch=1", "stub_control_dispatch=2"]);
 
@@ -328,12 +346,39 @@ int main() {
   const compiled = spawnSync(process.env.CXX || "c++", ["-std=c++17", "-O0", driver, "-o", executable, "-ldl", "-pthread"], { encoding: "utf8", timeout: 60000 });
   assert.equal(compiled.status, 0, compiled.error?.message || compiled.stderr);
   const env = { ...process.env, BAMBU_NATIVE_HOST: "127.0.0.1", BAMBU_NATIVE_SERIAL: "20PEXIT", BAMBU_NATIVE_ACCESS_CODE: "DUMMY",
-    BAMBU_NATIVE_COMMAND_CONFIRM: "1", BAMBU_NATIVE_COMMAND_JSON: JSON.stringify({ print: { command: "pause", sequence_id: "1" } }) };
+    BAMBU_NATIVE_CERT_WAIT_MS:"0", BAMBU_NATIVE_COMMAND_REPLY_MS:"0", BAMBU_NATIVE_COMMAND_CONFIRM: "1", BAMBU_NATIVE_COMMAND_JSON: JSON.stringify({ print: { command: "pause", sequence_id: "1" } }) };
   const sent = spawnSync(executable, [], { encoding: "utf8", timeout: 15000, env });
   assert.equal(sent.signal, null, sent.stderr);
   assert.equal(sent.status, 0, sent.stderr);
-  assert.match(sent.stdout, /native_command result=0\nstub_destroy_agent\n/, "plug-in cleanup still runs before exit");
+  assert.match(sent.stdout, /native_command result=0\n(?:native_reply_timeout ms=0\n)?stub_destroy_agent\n/, "plug-in cleanup still runs before exit");
   const refused = spawnSync(executable, [], { encoding: "utf8", timeout: 15000, env: { ...env, STUB_SEND_RESULT: "-1" } });
   assert.equal(refused.signal, null, refused.stderr);
   assert.equal(refused.status, 20, "a refused command keeps its failure code");
+});
+
+for (const command of ["pause","resume","stop"]) for (const variant of ["accepted","refused","missing","wrong-sequence"])
+test(`native ${command} reply is ${variant}`,async t=>{
+  const reply = variant === "missing" ? undefined : {command,sequence_id:variant==="wrong-sequence"?"other":"42",err_code:variant==="refused"?84033546:0};
+  const events=await helper(t,{reply});
+  const pending=sendCommandWithBambuNative(controlOptions({command,sequence_id:"42"}),{beforeDispatch:async()=>{}});
+  if(variant==="refused") await assert.rejects(pending,/printer refused.*0502400A/i);
+  else {
+    const result=await pending;
+    assert.equal(result.confirmed,variant==="accepted");
+    assert.equal(result.status,variant==="accepted"?"success":"dispatched_unconfirmed");
+  }
+  assert.equal((await events()).filter(e=>e.kind==="started").length,1);
+  assert.equal((await events())[0].configExists,true);
+});
+for(const preFailures of [1,2]) test(`Stop retries a proven pre-dispatch failure at most once (${preFailures})`,async t=>{
+  const events=await helper(t,{preFailures});
+  const pending=sendCommandWithBambuNative(controlOptions({command:"stop",sequence_id:"42"}));
+  if(preFailures===2) await assert.rejects(pending,/timed out before native command/);
+  else assert.equal((await pending).status,"dispatched_unconfirmed");
+  assert.equal((await events()).filter(e=>e.kind==="started").length,2);
+});
+test("Stop never replays a failure after the dispatch marker",async t=>{
+  const events=await helper(t,{postFailure:true});
+  await assert.rejects(sendCommandWithBambuNative(controlOptions({command:"stop",sequence_id:"42"})),/failed/);
+  assert.equal((await events()).filter(e=>e.kind==="started").length,1);
 });

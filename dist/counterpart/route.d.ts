@@ -3,7 +3,7 @@
  * cloud: Bambu Cloud through FULU's bridge.
  * developer: the local network straight to the printer (lan_mqtt_ftps), for a printer in LAN Only + Developer Mode.
  */
-export type PrintRoute = "lan" | "cloud" | "developer";
+export type PrintRoute = "lan" | "cloud" | "developer" | "native";
 export declare const PRINT_ROUTES: readonly PrintRoute[];
 export interface Connection {
     mode: string;

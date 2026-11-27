@@ -31,6 +31,7 @@ export type BambuNativeControlOptions = {
     host: string;
     serial: string;
     token: string;
+    configDir?: string;
     messageJson: string;
     qos?: number;
     flag?: number;
