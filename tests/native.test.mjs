@@ -942,6 +942,11 @@ test("X1C opt-in resumes inspected bytes natively", async t => {
   assert.equal((await s.events()).some(e=>e.command?.print?.command==="resume"),true);
 });
 
+test("X1C opt-in keeps heater-off off the native route",async t=>{
+  const s=await server(t,{model:"x1c",printer:"x1c",env:{BAMBU_NATIVE_CONTROLS:"x1c"}});
+  await s.client.callTool({name:"set_temperature",arguments:{component:"bed",temperature:0}});
+  assert.equal((await s.events()).some(e=>e.kind==="helper"),false);
+});
 test("X1C opt-in does not enable Linux native controls",async t=>{
   const s=await server(t,{platform:"linux",model:"x1c",printer:"x1c",env:{BAMBU_NATIVE_CONTROLS:"x1c"}});
   assert.notEqual((await s.client.callTool({name:"pause_print",arguments:{}})).isError,true);
