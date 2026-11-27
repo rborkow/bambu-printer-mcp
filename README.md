@@ -1318,6 +1318,12 @@ This MCP includes an optional headless design engine built on **build123d**, wit
 
 Why include it: a local comparison made a bottle-holder cavity at 65.800 × 28.800 mm, changed its height by exactly 1 mm with one parameter edit in 137 seconds, and exported an articulated unicorn in 657 seconds where two recorded Blender attempts reached 901 seconds without a model. Initial holder worker passes took 238–893 seconds; this is not a speed guarantee. The unicorn still had dimension and pose errors. These few runs do not establish general superiority, reliable articulation or physical print fit. Both holders collided with an oversized raw scan; numerical checks exposed that rather than silently resizing it.
 
+### SolidCraft saved-design handoff
+
+Prefer the client’s SolidCraft MCP connection for creating and editing parts in the desktop app. Save a `.sc` file, then call `solidcraft_export` with `design_path`, optional `parameters` (name to expression), `quality`, and `preview: true`. The default 3MF groups the placed bodies as one object with parts, so `slice_stl` can arrange the whole assembly without separating touching bodies. Follow the returned `next.arguments`, adding the printer model and material/process settings; inspect the slice before printing. `preserve_plate: true` returns `arrange:false` for designs already positioned on the plate. STL export is also available.
+
+`solidcraft_status` checks the local CLI and version. The default is `/Applications/SolidCraft.app/Contents/MacOS/solidcraft-cli`; set trusted `SOLIDCRAFT_CLI` to use another installation. Outputs go into a new private folder under the server temporary directory or an existing `output_dir` within trusted `CAD_OUTPUT_DIRS`. Parameter overrides leave the source design untouched. Each call has a bounded deadline (default 120 seconds); cancellation or timeout kills the CLI and fails even if partial files exist. This server does not start another SolidCraft MCP session or edit the desktop design. `cad_run` remains the headless fallback, and Fusion remains optional.
+
 **Don't want it?** Set `CAD_ENABLED=0` in the MCP's environment and restart the MCP. Its CAD tools, prompt and advertised capability disappear; printer tools and the existing Blender/Fusion bridges stay available. To remove a downloaded environment, stop the MCP and move its CAD data folder to Trash (default locations and `CAD_DATA_DIR` are in [the CAD guide](docs/CAD.md)). Your saved model outputs are separate. Leaving it disabled installs nothing and starts no Python.
 
 #### cad_status

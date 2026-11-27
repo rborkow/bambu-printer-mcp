@@ -34,6 +34,8 @@ const START_PRINT = hints(false, false, false, true);
 const SLICE_AND_PRINT = hints(false, true, false, true);
 
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
+  solidcraft_status: READ_LOCAL,
+  solidcraft_export: hints(false, false, false, false),
   cad_status: READ_LOCAL,
   cad_setup: hints(false, true, true, true),
   cad_run: hints(false, false, false, false),

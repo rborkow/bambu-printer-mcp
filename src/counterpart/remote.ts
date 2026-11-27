@@ -45,6 +45,8 @@ export const REMOTE_SCOPES: Readonly<Record<string, RemoteScope>> = {
   counterpart_print_progress: "read",
   counterpart_print_record: "read",
   counterpart_print_assess: "control", // local evidence mutation, never a printer command
+  solidcraft_status: "read",
+  solidcraft_export: "design",
   cad_status: "read",
   cad_examples: "read",
   design_guidance: "read",
@@ -119,7 +121,7 @@ const RAISED_BY: Readonly<Record<string, Record<string, RemoteScope>>> = {
 export const CONFIG_ARGUMENTS: ReadonlySet<string> = new Set([
   "host", "port", "api_key", "username", "password", "dev_ip", "dev_id", "bambu_serial", "bambu_token", "user_info",
   "country_code", "connection_type", "connection_mode", "route", "bambu_model", "nozzle_diameter", "nozzle_diameters",
-  "bridge_command", "slicer_path", "slicer_type", "ffmpeg_path", "plugin_dir", "runtime_dir", "template_dir",
+  "executable", "bridge_command", "slicer_path", "slicer_type", "ffmpeg_path", "plugin_dir", "runtime_dir", "template_dir",
   "config_filename", "bambu_network_method", "use_ssl_for_mqtt", "use_ssl_for_ftp", "extra_options",
   "allow_mutating_method",
 ]);

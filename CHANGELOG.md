@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Add SolidCraft saved-design export and installation status tools, bounded headless execution, optional previews, 3MF assembly grouping (or separate objects) and plate-preserving slicing hints; prefer the client’s SolidCraft design session while retaining CAD and Fusion fallbacks.
+
 - Offer an explicit native print route and experimental macOS X1C Pause/Resume/Stop with `BAMBU_NATIVE_CONTROLS=x1c` (heater-off keeps its existing route until X1C accepts the native temperature message on hardware); retain existing defaults and X2D routing.
 
 - Track native control sequence replies and printer refusals, wait for certificates, and isolate control configuration from Studio. Retry Stop once only after a proven pre-dispatch connection timeout.
