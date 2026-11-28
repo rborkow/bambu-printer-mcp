@@ -3,6 +3,29 @@
 Goal: on a Mac with Bambu Studio installed, the MCP prints, pauses, resumes, stops, reads status and camera for a
 cloud-mode printer (no LAN Only, no Developer Mode) **without the Lima VM or the FULU bridge**, and starts in seconds.
 
+## Outcome of the 2026-11-27 hardware spike (read first)
+
+**The native plug-in route is blocked for signed actions.** Loaded by `native/bambu-native-print`, Bambu Studio's
+02.09.02.62 plug-in refuses `start_local_print` with `-26` (`BAMBU_NETWORK_SIGNED_ERROR`; Studio's text: "Your software
+is not signed, and some printing functions have been restricted") and never installs the printer certificate, so Pause
+fails with `-4`. The plug-in checks the code signature of the process that loads it (Studio is signed by Bambu, team
+`T3UBR9Y3B2`; the helper is ad-hoc). Unsigned actions (upload, `system.ledctrl`) still work. `BAMBU_NATIVE_CONTROLS=x1c`
+therefore stays off; steps 1–4 below are superseded for X1C.
+
+**What works instead: FULU's bridge in an Apple container.** `scripts/fulu-apple-container.sh` runs FULU's x86-64 Linux
+host under QEMU 10 user-mode emulation in a native arm64 container (`scripts/fulu-host-qemu.Containerfile`): no x86
+kernel boots, the bridge is up in about 4 s instead of a minute, and only the runtime, the bridge's config folder and
+`TMPDIR` are mounted. Rosetta cannot run it: the plug-in's initializer reads its parent's command line and
+`/proc/self/maps` (an anti-tamper check) and dies with SIGBUS; QEMU 8 crashes at the same point. Verified on the X1C
+(firmware 01.12.01.00, cloud mode, no Developer Mode): print, Pause, Resume and Stop, each confirmed by a fresh MQTT
+report. Resume of a job FULU placed asks a person to confirm, because the printer's copy cannot be re-read over FTPS
+(550).
+
+Setup, once: `container system start`, `container system kernel set --recommended`, then
+`container build --platform linux/arm64 -t fulu-host-qemu:2 -f scripts/fulu-host-qemu.Containerfile scripts`. Point
+`BAMBU_NETWORK_BRIDGE_COMMAND` at the wrapper (keep `PJARCZAK_EXPECTED_BAMBU_NETWORK_VERSION`) and keep `TMPDIR` in a
+private folder under your home.
+
 ## Where things stand (fork base 1.1.103, 2026-11-24)
 
 The working setup on the reference machine (X1C, cloud mode, AMS) uses three routes at once:

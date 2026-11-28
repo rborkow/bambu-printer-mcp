@@ -150,6 +150,23 @@ The upstream [Lima wrapper](https://github.com/FULU-Foundation/OrcaSlicer-bambul
 
 The Linux guest must see the project file and writable config/log directory at the same absolute paths the MCP passes. A Docker/VM wrapper that mounts only the runtime libraries is insufficient for printing. If files are missing or the host crashes with an architecture error, resolve the upstream runtime installation before trying print commands.
 
+### Run the host in an Apple container (macOS, no x86 VM)
+
+`scripts/fulu-apple-container.sh` is a drop-in `BAMBU_NETWORK_BRIDGE_COMMAND` for FULU's Lima wrapper. It runs the
+x86-64 host under QEMU 10 user-mode emulation inside a native arm64 Apple container, so no x86 VM boots (about 4 s to a
+ready agent). Rosetta cannot run the 02.05.02.58 plug-in: its initializer dies with SIGBUS. Build the image once with
+`container build --platform linux/arm64 -t fulu-host-qemu:2 -f scripts/fulu-host-qemu.Containerfile scripts` after
+`container system start` and `container system kernel set --recommended`, then:
+
+```sh
+export BAMBU_NETWORK_BRIDGE_COMMAND="PJARCZAK_EXPECTED_BAMBU_NETWORK_VERSION=02.05.02.58 '/path/to/bambu-printer-mcp/scripts/fulu-apple-container.sh'"
+export TMPDIR="$HOME/.cache/bambu-printer-mcp/tmp"   # print snapshots; must be mounted, so not /tmp or /var/folders
+```
+
+It mounts FULU's runtime read-only, the bridge's config folder (`BAMBU_NETWORK_CONFIG_DIR`) and `TMPDIR`, each at its
+own path. `FULU_CONTAINER_IMAGE`, `FULU_CONTAINER_CLI` and `PJARCZAK_FORCE_HOST_ABI` (default `abi1`) override the
+defaults.
+
 ### Run the host in Docker
 
 On a Mac, or any machine without the x86-64 Linux runtime installed natively, the server can run FULU's Linux host in a Docker image itself. Set `BAMBU_NETWORK_BRIDGE_IMAGE` instead of `BAMBU_NETWORK_BRIDGE_COMMAND`:

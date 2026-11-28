@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Add `scripts/fulu-apple-container.sh`, a FULU bridge command that runs the x86-64 Linux host under QEMU 10 user-mode emulation in a native arm64 Apple container instead of an emulated x86 VM (about 4 s to a ready agent); print, Pause, Resume and Stop verified on an X1C in cloud mode.
 - Add SolidCraft saved-design export and installation status tools, bounded headless execution, optional previews, 3MF assembly grouping (or separate objects) and plate-preserving slicing hints; prefer the client’s SolidCraft design session while retaining CAD and Fusion fallbacks.
 
 - Offer an explicit native print route and experimental macOS X1C Pause/Resume/Stop with `BAMBU_NATIVE_CONTROLS=x1c` (heater-off keeps its existing route until X1C accepts the native temperature message on hardware); retain existing defaults and X2D routing.
